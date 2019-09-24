@@ -1,0 +1,14 @@
+{
+  "SchemaVersion": 1,
+  "Name" : "lib_lps22hh_example",
+  "ComponentId" : "694b9ef8-6d24-42c1-9f14-c7eecc9a8b0b",
+  "EntryPoint": "/bin/app",
+  "CmdArgs": [],
+  "Capabilities": {
+    "AllowedConnections": [],
+    "Gpio": [ 9 ],
+    "Uart": [],
+    "WifiConfig": false
+  },
+  "ApplicationType":"Default"
+}
