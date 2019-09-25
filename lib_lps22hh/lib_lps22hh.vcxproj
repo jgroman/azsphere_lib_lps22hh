@@ -47,7 +47,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="lib_lps22hh.c" />
+    <ClCompile Include="lps22hh_reg.c" />
     <ClInclude Include="Inc\Public\lib_lps22hh.h" />
+    <ClInclude Include="lps22hh_reg.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
