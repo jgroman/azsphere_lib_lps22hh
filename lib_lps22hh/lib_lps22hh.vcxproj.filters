@@ -21,12 +21,12 @@
     <ClCompile Include="lps22hh_reg.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="lsm6dso_reg.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Inc\Public\lib_lps22hh.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="lps22hh_reg.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

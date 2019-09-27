@@ -68,28 +68,49 @@
 extern "C" {
 #endif
 
+// Uncomment line below to enable debugging messages
+#define LPS22HH_DEBUG
+
+// Uncomment line below to enable I2C debugging messages
+//#define LPS22HH_I2C_DEBUG
+
+
+#ifdef LPS22HH_DEBUG
+#define DEBUG(s, f, ...) log_printf("%s %s: " s "\n", "LPS22HH", f, \
+                                                                 ## __VA_ARGS__)
+#else
+#define DEBUG(s, f, ...)
+#endif // LPS22HH_DEBUG
+
+#define ERROR(s, f, ...) log_printf("%s %s: " s "\n", "LPS22HH", f, \
+                                                                ## __VA_ARGS__)
 
 /*******************************************************************************
 *   Included Headers
 *******************************************************************************/
 
 #include "lps22hh_reg.h"
+#include "lsm6dso_reg.h"
 
 /*******************************************************************************
 *   Macros and #define Constants
 *******************************************************************************/
 
-#define I2C_ADDR_HUB_LM6DSO     (0x6A)
+#define LSM6DSO_HUB_I2C_ADDR     (0x6A)
 
 /*******************************************************************************
 *   Global Variables and Constant Declarations with Applicable Initializations
 *******************************************************************************/
 
+extern lsm6dso_ctx_t g_lsm6dso_ctx;
+extern lps22hh_ctx_t g_lps22hh_ctx;
+
 /*******************************************************************************
 *   Function Declarations
 *******************************************************************************/
 
-
+int
+lps22hh_open(int fd_i2c);
 
 #ifdef __cplusplus
 }

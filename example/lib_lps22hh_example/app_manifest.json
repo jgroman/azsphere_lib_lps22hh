@@ -6,7 +6,8 @@
   "CmdArgs": [],
   "Capabilities": {
     "AllowedConnections": [],
-    "Gpio": [ 9 ],
+    "Gpio": [ "$PROJECT_BUTTON_1" ],
+    "I2cMaster": [ "$PROJECT_ISU2_I2C" ],
     "Uart": [],
     "WifiConfig": false
   },
