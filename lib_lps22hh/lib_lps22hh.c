@@ -2,6 +2,7 @@
 * @file    lib_lps22hh.c
 * @version 1.0.0
 * @authors STMicroelectronics
+* https://github.com/STMicroelectronics/STMems_Standard_C_drivers/tree/master/lsm6dso_STdC/driver
 * @authors AVNet developers
 * @authors Jaroslav Groman
 *
@@ -119,11 +120,11 @@ static int
 log_printf(const char *p_format, ...);
 
 static int32_t
-lsm6dso_i2c_write(int *p_fd_i2c, uint8_t reg_addr,
+lsm6dso_i2c_write(void *p_fd_i2c, uint8_t reg_addr,
     uint8_t *p_data, uint16_t data_len);
 
 static int32_t
-lsm6dso_i2c_read(int *p_fd_i2c, uint8_t reg_addr,
+lsm6dso_i2c_read(void *p_fd_i2c, uint8_t reg_addr,
     uint8_t *p_data, uint16_t data_len);
 
 static void
@@ -140,7 +141,7 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
 *******************************************************************************/
 
 int g_fd_i2c = -1;
-lsm6dso_ctx_t g_lsm6dso_ctx;
+stmdev_ctx_t g_lsm6dso_ctx;
 lps22hh_ctx_t g_lps22hh_ctx;
 
 /*******************************************************************************
@@ -253,7 +254,7 @@ delay_ms(int delay_ms)
 static int32_t 
 lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len)
 {
-    axis3bit16_t data_raw_acceleration;
+    uint8_t buf_raw[32];
     int32_t ret;
     uint8_t drdy;
     lsm6dso_status_master_t master_status;
@@ -275,7 +276,7 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len)
     lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_104Hz);
 
     /* Wait Sensor Hub operation flag set. */
-    lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, data_raw_acceleration.u8bit);
+    lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, buf_raw);
     do
     {
         delay_ms(20);
@@ -301,7 +302,7 @@ static int32_t
 lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
 {
     lsm6dso_sh_cfg_read_t sh_cfg_read;
-    axis3bit16_t data_raw_acceleration;
+    uint8_t buf_raw[32];
     int32_t ret;
     uint8_t drdy;
     lsm6dso_status_master_t master_status;
@@ -330,7 +331,7 @@ lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
         lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_104Hz);
 
         /* Wait Sensor Hub operation flag set. */
-        lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, data_raw_acceleration.u8bit);
+        lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, buf_raw);
 
         DEBUG("LSM6DSO about to wait for drdy", __FUNCTION__);
 
@@ -360,17 +361,10 @@ lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
         // sensor hub 1, so copy that into our data array.
         DEBUG("LSM6DSO data raw get", __FUNCTION__);
 
-        lsm6dso_emb_sh_read_t buffer;
-        lsm6dso_sh_read_data_raw_get(&g_lsm6dso_ctx, &buffer);
+        uint8_t buffer[2];
+        lsm6dso_sh_read_data_raw_get(&g_lsm6dso_ctx, buffer, 2);
 
-        data[i] = (uint8_t)((buffer.sh_byte_1.bit7 << 7) |
-                  (buffer.sh_byte_1.bit6 << 6) |
-                  (buffer.sh_byte_1.bit5 << 5) |
-                  (buffer.sh_byte_1.bit4 << 4) |
-                  (buffer.sh_byte_1.bit3 << 3) |
-                  (buffer.sh_byte_1.bit2 << 2) |
-                  (buffer.sh_byte_1.bit1 << 1) |
-                  (buffer.sh_byte_1.bit0));
+        data[i] = buffer[1];
 
 #       ifdef LPS22HH_DEBUG
         log_printf("LPS %s:  READ (%d bytes): ", __FUNCTION__, len);
@@ -389,18 +383,18 @@ lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
 }
 
 static int32_t
-lsm6dso_i2c_write(int *p_fd_i2c, uint8_t reg_addr, 
+lsm6dso_i2c_write(void *p_fd_i2c, uint8_t reg_addr, 
     uint8_t *p_data, uint16_t data_len)
 {
-    return i2c_write(*p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr, 
+    return i2c_write(*(int *)p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr,
         p_data, (uint32_t)data_len);
 }
 
 static int32_t
-lsm6dso_i2c_read(int *p_fd_i2c, uint8_t reg_addr,
+lsm6dso_i2c_read(void *p_fd_i2c, uint8_t reg_addr,
     uint8_t *p_data, uint16_t data_len)
 {
-    return i2c_read(*p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr,
+    return i2c_read(*(int *)p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr,
         p_data, (uint32_t)data_len);
 }
 
