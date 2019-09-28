@@ -2,12 +2,13 @@
 * @file    lib_lps22hh.c
 * @version 1.0.0
 * @authors STMicroelectronics
-* https://github.com/STMicroelectronics/STMems_Standard_C_drivers/tree/master/lsm6dso_STdC/driver
+*          https://github.com/STMicroelectronics/STMems_Standard_C_drivers/
+*
 * @authors AVNet developers
 * @authors Jaroslav Groman
 *
 * @par Project Name
-*
+*      LPS22HH sensor support library for Azure Sphere
 *
 * @par Description
 *    .
@@ -29,35 +30,18 @@
 *******************************************************************************/
 
 /*
- * Some of the code in this file was copied from ST Micro.
+ * Parts of code are Copyright (c) STMicroelectronics.
  * Below is their licence information.
  *
  * @attention
  *
- * <h2><center>&copy; COPYRIGHT(c) 2018 STMicroelectronics</center></h2>
+ * <h2><center>&copy; Copyright (c) 2019 STMicroelectronics.
+ * All rights reserved.</center></h2>
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *   1. Redistributions of source code must retain the above copyright notice,
- *      this list of conditions and the following disclaimer.
- *   2. Redistributions in binary form must reproduce the above copyright
- *      notice, this list of conditions and the following disclaimer in the
- *      documentation and/or other materials provided with the distribution.
- *   3. Neither the name of STMicroelectronics nor the names of its
- *      contributors may be used to endorse or promote products derived from
- *      this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * This software component is licensed by ST under BSD 3-Clause license,
+ * the "License"; You may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at:
+ *                        opensource.org/licenses/BSD-3-Clause
  *
  */
 
@@ -65,6 +49,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
 #include <applibs/log.h>
 #include <applibs/i2c.h>
@@ -142,93 +128,194 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
 
 int g_fd_i2c = -1;
 stmdev_ctx_t g_lsm6dso_ctx;
-stmdev_ctx_t g_lps22hh_ctx;
 
 /*******************************************************************************
 * Public function definitions
 *******************************************************************************/
 
-int
-lps22hh_open_via_lsm6dso(int fd_i2c)
+stmdev_ctx_t
+*lps22hh_open_via_lsm6dso(int fd_i2c)
 {
+    stmdev_ctx_t *p_lps = NULL;
+    bool b_is_init_ok = true;
+
     int result = -1;
     
     uint8_t device_id;
     uint8_t device_reset_flag;
 
-    g_fd_i2c = fd_i2c;
-    
-    g_lsm6dso_ctx.write_reg = lsm6dso_i2c_write;
-    g_lsm6dso_ctx.read_reg = lsm6dso_i2c_read;
-    g_lsm6dso_ctx.handle = &g_fd_i2c;
-
-    g_lps22hh_ctx.read_reg = lps22hh_read_via_lsm6dso;
-    g_lps22hh_ctx.write_reg = lps22hh_write_via_lsm6dso;
-    g_lps22hh_ctx.handle = &g_fd_i2c;
-
-    // Force switch LSM6DSO to standard register set which includes WHO_AM_I
-    lsm6dso_mem_bank_set(&g_lsm6dso_ctx, LSM6DSO_USER_BANK);
-
-    lsm6dso_device_id_get(&g_lsm6dso_ctx, &device_id);
-    if (device_id != LSM6DSO_ID)
+    if ((p_lps = malloc(sizeof(stmdev_ctx_t))) == NULL)
     {
-        ERROR("LSM6DSO hub device not found.", __FUNCTION__);
-        result = -1;
+        // Cannot allocate memory for device descriptor
+        ERROR("Not enough free memory.", __FUNCTION__);
+        b_is_init_ok = false;
     }
     else
     {
-        DEBUG("LSM6DSO hub device detected.", __FUNCTION__);
-        result = 0;
+        g_fd_i2c = fd_i2c;
 
-        // Restore default configuration
-        lsm6dso_reset_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
-        do 
+        g_lsm6dso_ctx.write_reg = lsm6dso_i2c_write;
+        g_lsm6dso_ctx.read_reg = lsm6dso_i2c_read;
+        g_lsm6dso_ctx.handle = &g_fd_i2c;
+
+        p_lps->read_reg = lps22hh_read_via_lsm6dso;
+        p_lps->write_reg = lps22hh_write_via_lsm6dso;
+        p_lps->handle = &g_fd_i2c;
+    }
+
+    // Initializing LSM6DSO
+    // -- Make sure LSM6DSO is using standard register set before attempting
+    //    to read WHO_AM_I register
+    if (b_is_init_ok && 
+        (lsm6dso_mem_bank_set(&g_lsm6dso_ctx, LSM6DSO_USER_BANK) != 0))
+    {
+        ERROR("LSM6DSO failed to set memory bank.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Read LSM6DSO WHO_AM_I register
+    if (b_is_init_ok &&
+        (lsm6dso_device_id_get(&g_lsm6dso_ctx, &device_id) != 0))
+    {
+        ERROR("LSM6DSO failed to read WHO_AM_I.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Check WHO_AM_I value
+    if (b_is_init_ok && (device_id != LSM6DSO_ID))
+    {
+        ERROR("LSM6DSO device not present.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Restore default LSM6DSO configuration
+    if (b_is_init_ok &&
+        (lsm6dso_reset_set(&g_lsm6dso_ctx, PROPERTY_ENABLE) != 0))
+    {
+        ERROR("LSM6DSO failed to set reset.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Wait for reset to complete
+    if (b_is_init_ok)
+    {
+        do
         {
             result = lsm6dso_reset_get(&g_lsm6dso_ctx, &device_reset_flag);
         } 
-        while (device_reset_flag);
+        while (device_reset_flag && (result == 0));
 
-        // Disable I3C interface
-        result = lsm6dso_i3c_disable_set(&g_lsm6dso_ctx, LSM6DSO_I3C_DISABLE);
-
-        // Enable Block Data Update
-        lsm6dso_block_data_update_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
+        if (result != 0)
+        {
+            ERROR("LSM6DSO failed to get reset flag.", __FUNCTION__);
+            b_is_init_ok = false;
+        }
     }
 
-    if (result != -1)
+    // -- Disable I3C interface
+    if (b_is_init_ok &&
+        (lsm6dso_i3c_disable_set(&g_lsm6dso_ctx, LSM6DSO_I3C_DISABLE) != 0))
     {
-        // Enable internal pull up resistors on master I2C interface
-        lsm6dso_sh_pin_mode_set(&g_lsm6dso_ctx, LSM6DSO_INTERNAL_PULL_UP);
+        ERROR("LSM6DSO failed to disable I3C.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
 
-        // Check for LPS22HH connected to LSM6DSO Sensor Hub
-        lps22hh_device_id_get(&g_lps22hh_ctx, &device_id);
-        if (device_id != LPS22HH_ID)
+    // -- Enable Block Data Update
+    if (b_is_init_ok &&
+        (lsm6dso_block_data_update_set(&g_lsm6dso_ctx, PROPERTY_ENABLE) != 0))
+    {
+        ERROR("LSM6DSO failed to enable block data update.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    if (b_is_init_ok)
+    {
+        DEBUG("LSM6DSO device detected and initialized.", __FUNCTION__);
+    }
+
+    // Initializing LPS22HH
+    // -- Enable internal pull up resistors on LSM6DSO I2C Master interface
+    if (b_is_init_ok &&
+       (lsm6dso_sh_pin_mode_set(&g_lsm6dso_ctx, LSM6DSO_INTERNAL_PULL_UP) != 0))
+    {
+        ERROR("LSM6DSO failed to enable internal pullup.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Read LPS22HH WHO_AM_I register
+    if (b_is_init_ok && 
+        (lps22hh_device_id_get(p_lps, &device_id) != 0))
+    {
+        ERROR("LPS22HH failed to read WHO_AM_I.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Check WHO_AM_I value
+    if (b_is_init_ok && (device_id != LPS22HH_ID))
+    {
+        ERROR("LPS22HH device not present.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Restore default LPS22HH configuration
+    if (b_is_init_ok &&
+        (lps22hh_reset_set(p_lps, PROPERTY_ENABLE) != 0))
+    {
+        ERROR("LPS22HH failed to set reset.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Wait for reset to complete
+    if (b_is_init_ok)
+    {
+        do
         {
-            ERROR("LPS22HH sensor not found.", __FUNCTION__);
-            result = -1;
-        }
-        else
+            result = lps22hh_reset_get(p_lps, &device_reset_flag);
+        } 
+        while (device_reset_flag && (result == 0));
+
+        if (result != 0)
         {
-            DEBUG("LPS22HH sensor detected.", __FUNCTION__);
-            result = 0;
-
-            // Restore the default configuration
-            lps22hh_reset_set(&g_lps22hh_ctx, PROPERTY_ENABLE);
-            do 
-            {
-                lps22hh_reset_get(&g_lps22hh_ctx, &device_reset_flag);
-            } 
-            while (device_reset_flag);
-
-            // Enable Block Data Update
-            lps22hh_block_data_update_set(&g_lps22hh_ctx, PROPERTY_ENABLE);
-
-            // Set Output Data Rate
-            lps22hh_data_rate_set(&g_lps22hh_ctx, LPS22HH_10_Hz_LOW_NOISE);
+            ERROR("LPS22HH failed to get reset flag.", __FUNCTION__);
+            b_is_init_ok = false;
         }
     }
 
-    return result;
+    // -- Enable Block Data Update
+    if (b_is_init_ok &&
+        (lps22hh_block_data_update_set(p_lps, PROPERTY_ENABLE) != 0))
+    {
+        ERROR("LPS22HH failed to enable block data update.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    // -- Set Output Data Rate
+    if (b_is_init_ok &&
+        (lps22hh_data_rate_set(p_lps, LPS22HH_10_Hz_LOW_NOISE) != 0))
+    {
+        ERROR("LPS22HH failed to set output data rate.", __FUNCTION__);
+        b_is_init_ok = false;
+    }
+
+    if (b_is_init_ok)
+    {
+        DEBUG("LPS22HH device detected and initialized.", __FUNCTION__);
+    }
+    else
+    {
+        // There was an error during initialization process
+        free(p_lps);
+        p_lps = NULL;
+    }
+
+    return p_lps;
+}
+
+void
+lps22hh_close(stmdev_ctx_t *p_lps)
+{
+    // Free memory allocated to device decriptor
+    free(p_lps);
 }
 
 /*******************************************************************************
@@ -294,7 +381,8 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len)
     lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_OFF);
 
 #   ifdef LPS22HH_I2C_DEBUG
-    log_printf("LPS %s:  REG (0x%02X) WRITE (%d bytes): ", __FUNCTION__, reg, len);
+    log_printf("LPS %s:  REG (0x%02X) WRITE (%d bytes): ", __FUNCTION__, 
+        reg, len);
     for (int i = 0; i < len; i++)
     {
         log_printf("%02X ", data[i]);
@@ -323,9 +411,6 @@ lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
     sh_cfg_read.slv_len = (uint8_t)len;
 
     ret = lsm6dso_sh_slv0_cfg_read(&g_lsm6dso_ctx, &sh_cfg_read);
-
-    // WRITE_ONCE is mandatory for read
-    //lsm6dso_sh_write_mode_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
 
     // Using slave 0 only
     lsm6dso_sh_slave_connected_set(&g_lsm6dso_ctx, LSM6DSO_SLV_0);
@@ -362,7 +447,8 @@ lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
     lsm6dso_sh_read_data_raw_get(&g_lsm6dso_ctx, data, (uint8_t)len);
 
 #   ifdef LPS22HH_I2C_DEBUG
-    log_printf("LPS %s:  REG (0x%02X) READ (%d bytes): ", __FUNCTION__, reg, len);
+    log_printf("LPS %s:  REG (0x%02X) READ (%d bytes): ", __FUNCTION__, 
+        reg, len);
     for (int i = 0; i < len; i++)
     {
         log_printf("%02X ", data[i]);
