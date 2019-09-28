@@ -89,8 +89,8 @@ extern "C" {
 *   Included Headers
 *******************************************************************************/
 
-#include "lps22hh_reg.h"
 #include "lsm6dso_reg.h"
+#include "lps22hh_reg.h"
 
 /*******************************************************************************
 *   Macros and #define Constants
@@ -102,15 +102,14 @@ extern "C" {
 *   Global Variables and Constant Declarations with Applicable Initializations
 *******************************************************************************/
 
-extern lsm6dso_ctx_t g_lsm6dso_ctx;
-extern lps22hh_ctx_t g_lps22hh_ctx;
+extern stmdev_ctx_t g_lps22hh_ctx;
 
 /*******************************************************************************
 *   Function Declarations
 *******************************************************************************/
 
 int
-lps22hh_open(int fd_i2c);
+lps22hh_open_via_lsm6dso(int fd_i2c);
 
 #ifdef __cplusplus
 }

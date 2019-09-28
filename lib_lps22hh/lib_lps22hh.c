@@ -2,6 +2,7 @@
 * @file    lib_lps22hh.c
 * @version 1.0.0
 * @authors STMicroelectronics
+* https://github.com/STMicroelectronics/STMems_Standard_C_drivers/tree/master/lsm6dso_STdC/driver
 * @authors AVNet developers
 * @authors Jaroslav Groman
 *
@@ -85,7 +86,7 @@
   * @param p_data Pointer to buffer for read data.
   * @param data_len Number of bytes to be read.
   *
-  * @result The number of bytes successfully read, or -1 for failure.
+  * @result 0 for success or -1 for failure.
   */
 static ssize_t
 i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
@@ -100,7 +101,7 @@ i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
  * @param p_data Pointer to data to be transmitted.
  * @param data_len Number of bytes to be transmitted.
  *
- * @result The number of bytes successfully written, or -1 for failure.
+ * @result 0 for success or -1 for failure.
  */
 static ssize_t
 i2c_write(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
@@ -119,11 +120,11 @@ static int
 log_printf(const char *p_format, ...);
 
 static int32_t
-lsm6dso_i2c_write(int *p_fd_i2c, uint8_t reg_addr,
+lsm6dso_i2c_write(void *p_fd_i2c, uint8_t reg_addr,
     uint8_t *p_data, uint16_t data_len);
 
 static int32_t
-lsm6dso_i2c_read(int *p_fd_i2c, uint8_t reg_addr,
+lsm6dso_i2c_read(void *p_fd_i2c, uint8_t reg_addr,
     uint8_t *p_data, uint16_t data_len);
 
 static void
@@ -140,15 +141,15 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
 *******************************************************************************/
 
 int g_fd_i2c = -1;
-lsm6dso_ctx_t g_lsm6dso_ctx;
-lps22hh_ctx_t g_lps22hh_ctx;
+stmdev_ctx_t g_lsm6dso_ctx;
+stmdev_ctx_t g_lps22hh_ctx;
 
 /*******************************************************************************
 * Public function definitions
 *******************************************************************************/
 
 int
-lps22hh_open(int fd_i2c)
+lps22hh_open_via_lsm6dso(int fd_i2c)
 {
     int result = -1;
     
@@ -161,11 +162,18 @@ lps22hh_open(int fd_i2c)
     g_lsm6dso_ctx.read_reg = lsm6dso_i2c_read;
     g_lsm6dso_ctx.handle = &g_fd_i2c;
 
-    // Check LSM6DSO device ID
+    g_lps22hh_ctx.read_reg = lps22hh_read_via_lsm6dso;
+    g_lps22hh_ctx.write_reg = lps22hh_write_via_lsm6dso;
+    g_lps22hh_ctx.handle = &g_fd_i2c;
+
+    // Force switch LSM6DSO to standard register set which includes WHO_AM_I
+    lsm6dso_mem_bank_set(&g_lsm6dso_ctx, LSM6DSO_USER_BANK);
+
     lsm6dso_device_id_get(&g_lsm6dso_ctx, &device_id);
     if (device_id != LSM6DSO_ID)
     {
         ERROR("LSM6DSO hub device not found.", __FUNCTION__);
+        result = -1;
     }
     else
     {
@@ -174,61 +182,48 @@ lps22hh_open(int fd_i2c)
 
         // Restore default configuration
         lsm6dso_reset_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
-        do {
-            lsm6dso_reset_get(&g_lsm6dso_ctx, &device_reset_flag);
-        } while (device_reset_flag);
+        do 
+        {
+            result = lsm6dso_reset_get(&g_lsm6dso_ctx, &device_reset_flag);
+        } 
+        while (device_reset_flag);
 
         // Disable I3C interface
-        lsm6dso_i3c_disable_set(&g_lsm6dso_ctx, LSM6DSO_I3C_DISABLE);
+        result = lsm6dso_i3c_disable_set(&g_lsm6dso_ctx, LSM6DSO_I3C_DISABLE);
 
         // Enable Block Data Update
         lsm6dso_block_data_update_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
-
-        // Set Output Data Rate
-        lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_12Hz5);
-        lsm6dso_gy_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_GY_ODR_12Hz5);
-
-        // Set full scale
-        lsm6dso_xl_full_scale_set(&g_lsm6dso_ctx, LSM6DSO_4g);
-        lsm6dso_gy_full_scale_set(&g_lsm6dso_ctx, LSM6DSO_2000dps);
-
-        // Configure filtering chain(No aux interface)
-       // Accelerometer - LPF1 + LPF2 path	
-        lsm6dso_xl_hp_path_on_out_set(&g_lsm6dso_ctx, LSM6DSO_LP_ODR_DIV_100);
-        lsm6dso_xl_filter_lp2_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
     }
 
     if (result != -1)
     {
-        DEBUG("Initializing LPS22HH.", __FUNCTION__);
-
-        g_lps22hh_ctx.read_reg = lps22hh_read_via_lsm6dso;
-        g_lps22hh_ctx.write_reg = lps22hh_write_via_lsm6dso;
-        g_lps22hh_ctx.handle = &g_fd_i2c;
-
-        // Try to connect to LPS22HH via LSM6DSO
-        // Enable pull up on master I2C interface.
+        // Enable internal pull up resistors on master I2C interface
         lsm6dso_sh_pin_mode_set(&g_lsm6dso_ctx, LSM6DSO_INTERNAL_PULL_UP);
 
-        // Check if LPS22HH is connected to Sensor Hub
+        // Check for LPS22HH connected to LSM6DSO Sensor Hub
         lps22hh_device_id_get(&g_lps22hh_ctx, &device_id);
-        if (device_id != LPS22HH_ID) {
+        if (device_id != LPS22HH_ID)
+        {
             ERROR("LPS22HH sensor not found.", __FUNCTION__);
             result = -1;
         }
-        else {
+        else
+        {
             DEBUG("LPS22HH sensor detected.", __FUNCTION__);
+            result = 0;
 
             // Restore the default configuration
             lps22hh_reset_set(&g_lps22hh_ctx, PROPERTY_ENABLE);
-            do {
+            do 
+            {
                 lps22hh_reset_get(&g_lps22hh_ctx, &device_reset_flag);
-            } while (device_reset_flag);
+            } 
+            while (device_reset_flag);
 
             // Enable Block Data Update
             lps22hh_block_data_update_set(&g_lps22hh_ctx, PROPERTY_ENABLE);
 
-            //Set Output Data Rate
+            // Set Output Data Rate
             lps22hh_data_rate_set(&g_lps22hh_ctx, LPS22HH_10_Hz_LOW_NOISE);
         }
     }
@@ -253,7 +248,7 @@ delay_ms(int delay_ms)
 static int32_t 
 lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len)
 {
-    axis3bit16_t data_raw_acceleration;
+    uint8_t buf_raw[32];
     int32_t ret;
     uint8_t drdy;
     lsm6dso_status_master_t master_status;
@@ -261,21 +256,24 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len)
 
     // Configure Sensor Hub to write to the LPS22HH, and send the write data
     sh_cfg_write.slv0_add = (LPS22HH_I2C_ADD_L & 0xFEU) >> 1; // 7bit I2C addr
-    sh_cfg_write.slv0_subadd = reg,
-        sh_cfg_write.slv0_data = *data,
-        ret = lsm6dso_sh_cfg_write(&g_lsm6dso_ctx, &sh_cfg_write);
+    sh_cfg_write.slv0_subadd = reg;
+    sh_cfg_write.slv0_data = *data;
+    
+    ret = lsm6dso_sh_cfg_write(&g_lsm6dso_ctx, &sh_cfg_write);
 
-    /* Disable accelerometer. */
+    // Disable accelerometer
     lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_OFF);
 
-    /* Enable I2C Master. */
+    // Enable I2C Master
     lsm6dso_sh_master_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
 
-    /* Enable accelerometer to trigger Sensor Hub operation. */
+    // Enable accelerometer to trigger Sensor Hub operation
     lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_104Hz);
 
-    /* Wait Sensor Hub operation flag set. */
-    lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, data_raw_acceleration.u8bit);
+    // Read and ignore accelerometer data
+    lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, buf_raw);
+
+    // Wait for accelerometer data transfer to complete
     do
     {
         delay_ms(20);
@@ -283,6 +281,7 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len)
     } 
     while (!drdy);
 
+    // Wait for I²C master transfer to complete
     do
     {
         delay_ms(20);
@@ -290,9 +289,18 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len)
     } 
     while (!master_status.sens_hub_endop);
 
-    /* Disable I2C master and XL (trigger). */
+    // Disable I2C master and accelerometer
     lsm6dso_sh_master_set(&g_lsm6dso_ctx, PROPERTY_DISABLE);
     lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_OFF);
+
+#   ifdef LPS22HH_I2C_DEBUG
+    log_printf("LPS %s:  REG (0x%02X) WRITE (%d bytes): ", __FUNCTION__, reg, len);
+    for (int i = 0; i < len; i++)
+    {
+        log_printf("%02X ", data[i]);
+    }
+    log_printf("\n");
+#   endif   // LPS22HH_I2C_DEBUG
 
     return ret;
 }
@@ -301,7 +309,7 @@ static int32_t
 lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
 {
     lsm6dso_sh_cfg_read_t sh_cfg_read;
-    axis3bit16_t data_raw_acceleration;
+    uint8_t buf_raw[6];
     int32_t ret;
     uint8_t drdy;
     lsm6dso_status_master_t master_status;
@@ -309,98 +317,75 @@ lps22hh_read_via_lsm6dso(void *ctx, uint8_t reg, uint8_t *data, uint16_t len)
     // Disable accelerometer
     lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_OFF);
 
-    // For each byte we need to read from the lps22hh
-    for (uint16_t i = 0; i < len; i++) 
-    {
-        // Configure Sensor Hub to read LPS22HH
-        sh_cfg_read.slv_add = (LPS22HH_I2C_ADD_L & 0xFEU) >> 1; // 7bit I2C addr
-        sh_cfg_read.slv_subadd = (uint8_t)(reg + i);
-        sh_cfg_read.slv_len = 1;
+    // Configure Sensor Hub to read LPS22HH
+    sh_cfg_read.slv_add = (LPS22HH_I2C_ADD_L & 0xFEU) >> 1; // 7bit I2C address
+    sh_cfg_read.slv_subadd = reg;
+    sh_cfg_read.slv_len = (uint8_t)len;
 
-        // Call the command to read the data from the sensor hub.
-        // This data will be read from the device connected to the 
-        // sensor hub, and saved into a register for us to read.
-        ret = lsm6dso_sh_slv0_cfg_read(&g_lsm6dso_ctx, &sh_cfg_read);
-        lsm6dso_sh_slave_connected_set(&g_lsm6dso_ctx, LSM6DSO_SLV_0);
+    ret = lsm6dso_sh_slv0_cfg_read(&g_lsm6dso_ctx, &sh_cfg_read);
 
-        /* Enable I2C Master */
-        lsm6dso_sh_master_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
+    // WRITE_ONCE is mandatory for read
+    //lsm6dso_sh_write_mode_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
 
-        /* Enable accelerometer to trigger Sensor Hub operation. */
-        lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_104Hz);
+    // Using slave 0 only
+    lsm6dso_sh_slave_connected_set(&g_lsm6dso_ctx, LSM6DSO_SLV_0);
 
-        /* Wait Sensor Hub operation flag set. */
-        lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, data_raw_acceleration.u8bit);
+    // I2C master enable
+    lsm6dso_sh_master_set(&g_lsm6dso_ctx, PROPERTY_ENABLE);
 
-        DEBUG("LSM6DSO about to wait for drdy", __FUNCTION__);
-
-        do
-        {
-            delay_ms(20);
-            lsm6dso_xl_flag_data_ready_get(&g_lsm6dso_ctx, &drdy);
-        } 
-        while (!drdy);
-
-        DEBUG("LSM6DSO about to wait for status", __FUNCTION__);
-
-        // Wait for sensor hub communication conclusion
-        do 
-        {
-            delay_ms(20);
-            lsm6dso_sh_status_get(&g_lsm6dso_ctx, &master_status);
-        } 
-        while (!master_status.sens_hub_endop);
-
-        /* Disable I2C master and XL(trigger). */
-        lsm6dso_sh_master_set(&g_lsm6dso_ctx, PROPERTY_DISABLE);
-        lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_OFF);
-
-        // Read the data from the device.  The call below reads
-        // all 18 sensor hub data.  We just need the data from 
-        // sensor hub 1, so copy that into our data array.
-        DEBUG("LSM6DSO data raw get", __FUNCTION__);
-
-        lsm6dso_emb_sh_read_t buffer;
-        lsm6dso_sh_read_data_raw_get(&g_lsm6dso_ctx, &buffer);
-
-        data[i] = (uint8_t)((buffer.sh_byte_1.bit7 << 7) |
-                  (buffer.sh_byte_1.bit6 << 6) |
-                  (buffer.sh_byte_1.bit5 << 5) |
-                  (buffer.sh_byte_1.bit4 << 4) |
-                  (buffer.sh_byte_1.bit3 << 3) |
-                  (buffer.sh_byte_1.bit2 << 2) |
-                  (buffer.sh_byte_1.bit1 << 1) |
-                  (buffer.sh_byte_1.bit0));
-
-#       ifdef LPS22HH_DEBUG
-        log_printf("LPS %s:  READ (%d bytes): ", __FUNCTION__, len);
-        for (int i = 0; i < len; i++)
-        {
-            log_printf("%02X ", data[i]);
-        }
-        log_printf("\n");
-#       endif 
-    }
-
-    /* Re-enable accelerometer */
+    // Enable accelerometer to trigger Sensor Hub operation
     lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_104Hz);
+
+    // Read and ignore accelerometer data
+    lsm6dso_acceleration_raw_get(&g_lsm6dso_ctx, buf_raw);
+
+    // Wait for accelerometer data transfer to complete
+    do 
+    {
+        delay_ms(20);
+        lsm6dso_xl_flag_data_ready_get(&g_lsm6dso_ctx, &drdy);
+    } 
+    while (!drdy);
+
+    // Wait for I2C master transfer to complete
+    do
+    {
+        lsm6dso_sh_status_get(&g_lsm6dso_ctx, &master_status);
+    } 
+    while (!master_status.sens_hub_endop);
+
+    // Disable I2C master and accelerometer
+    lsm6dso_sh_master_set(&g_lsm6dso_ctx, PROPERTY_DISABLE);
+    lsm6dso_xl_data_rate_set(&g_lsm6dso_ctx, LSM6DSO_XL_ODR_OFF);
+
+    // Read SensorHub registers
+    lsm6dso_sh_read_data_raw_get(&g_lsm6dso_ctx, data, (uint8_t)len);
+
+#   ifdef LPS22HH_I2C_DEBUG
+    log_printf("LPS %s:  REG (0x%02X) READ (%d bytes): ", __FUNCTION__, reg, len);
+    for (int i = 0; i < len; i++)
+    {
+        log_printf("%02X ", data[i]);
+    }
+    log_printf("\n");
+#   endif   // LPS22HH_I2C_DEBUG
 
     return ret;
 }
 
 static int32_t
-lsm6dso_i2c_write(int *p_fd_i2c, uint8_t reg_addr, 
+lsm6dso_i2c_write(void *p_fd_i2c, uint8_t reg_addr, 
     uint8_t *p_data, uint16_t data_len)
 {
-    return i2c_write(*p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr, 
+    return i2c_write(*(int *)p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr,
         p_data, (uint32_t)data_len);
 }
 
 static int32_t
-lsm6dso_i2c_read(int *p_fd_i2c, uint8_t reg_addr,
+lsm6dso_i2c_read(void *p_fd_i2c, uint8_t reg_addr,
     uint8_t *p_data, uint16_t data_len)
 {
-    return i2c_read(*p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr,
+    return i2c_read(*(int *)p_fd_i2c, LSM6DSO_HUB_I2C_ADDR, reg_addr,
         p_data, (uint32_t)data_len);
 }
 
@@ -417,7 +402,6 @@ i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
             reg_addr, data_len);
 #       endif   // LPS22HH_I2C_DEBUG
 
-        // Select register and read its data
         result = I2CMaster_WriteThenRead(fd_i2c, i2c_addr,
             &reg_addr, 1, p_data, data_len);
 
@@ -441,8 +425,13 @@ i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
         }
     }
 
-    // Return length of read data only
-    return result - 1;
+    if (result > 0)
+    {
+        // STM driver expects only -1 or 0 return values
+        result = 0;
+    }
+
+    return result;
 }
 
 static ssize_t
@@ -485,6 +474,12 @@ i2c_write(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
                 __FUNCTION__, strerror(errno), errno, data_len + 1, i2c_addr);
 #           endif   // LPS22HH_DEBUG
         }
+    }
+
+    if (result > 0)
+    {
+        // STM driver expects only -1 or 0 return values
+        result = 0;
     }
 
     return result;
