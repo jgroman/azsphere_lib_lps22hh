@@ -99,6 +99,16 @@ static EventData g_event_data_button = {          // Event handler data
     .eventHandler = &button_timer_event_handler // Populate only this field
 };
 
+typedef union {
+    int16_t i16bit;
+    uint8_t u8bit[2];
+} axis1bit16_t;
+
+typedef union {
+    int32_t i32bit;
+    uint8_t u8bit[4];
+} axis1bit32_t;
+
 /*******************************************************************************
 * Function definitions
 *******************************************************************************/
@@ -106,7 +116,14 @@ static EventData g_event_data_button = {          // Event handler data
 int
 main(int argc, char *argv[])
 {
-    const struct timespec sleep_time = { 1, 0 };
+    const struct timespec sleep_time = { 5, 0 };
+
+    lps22hh_reg_t lps22hhReg;
+    float lps22hhTemperature_degC;
+    float pressure_hPa;
+
+    static axis1bit32_t data_raw_pressure;
+    static axis1bit16_t data_raw_temperature;
 
     Log_Debug("\n*** Starting ***\n");
     Log_Debug("Press Button 1 to exit.\n");
@@ -136,6 +153,23 @@ main(int argc, char *argv[])
         // Main program loop
         while (!gb_is_termination_requested)
         {
+            // Read LPS22HH status
+            lps22hh_read_reg(&g_lps22hh_ctx, LPS22HH_STATUS, (uint8_t *)&lps22hhReg, 1);
+
+            if ((lps22hhReg.status.p_da == 1) && (lps22hhReg.status.t_da == 1))
+            {
+                //memset(data_raw_pressure.u8bit, 0x00, sizeof(int32_t));
+                lps22hh_pressure_raw_get(&g_lps22hh_ctx, data_raw_pressure.u8bit);
+
+                pressure_hPa = lps22hh_from_lsb_to_hpa(data_raw_pressure.i32bit);
+
+                //memset(data_raw_temperature.u8bit, 0x00, sizeof(int16_t));
+                lps22hh_temperature_raw_get(&g_lps22hh_ctx, data_raw_temperature.u8bit);
+                lps22hhTemperature_degC = lps22hh_from_lsb_to_celsius(data_raw_temperature.i16bit);
+
+                Log_Debug("LPS22HH: Pressure     [hPa] : %.2f\n", pressure_hPa);
+                Log_Debug("LPS22HH: Temperature  [degC]: %.2f\n\n", lps22hhTemperature_degC);
+            }
 
             // Handle timers
             if (WaitForEventAndCallHandler(g_fd_epoll) != 0)
@@ -232,7 +266,7 @@ init_peripherals(I2C_InterfaceId isu_id)
     if (result != -1)
     {
         Log_Debug("Init LPS22HH\n");
-        result = lps22hh_open(g_fd_i2c);
+        result = lps22hh_open_via_lsm6dso(g_fd_i2c);
         if (result != 0)
         {
             Log_Debug("Error initializing LPS22HH sensor\n");
@@ -275,7 +309,6 @@ close_peripherals_and_handlers(void)
 {
     // Close LPS22HH sensor
     Log_Debug("Close LPS22HH\n");
-
 
     // Close I2C
     if (g_fd_i2c)
