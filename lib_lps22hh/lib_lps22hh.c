@@ -68,7 +68,7 @@
 *******************************************************************************/
 
 // Uncomment line below to enable debugging messages
-#define LPS22HH_DEBUG
+//#define LPS22HH_DEBUG
 
 // Uncomment line below to enable I2C debugging messages
 //#define LPS22HH_I2C_DEBUG
