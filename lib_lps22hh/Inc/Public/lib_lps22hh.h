@@ -49,27 +49,10 @@
 extern "C" {
 #endif
 
-// Uncomment line below to enable debugging messages
-//#define LPS22HH_DEBUG
-
-// Uncomment line below to enable I2C debugging messages
-//#define LPS22HH_I2C_DEBUG
-
-#ifdef LPS22HH_DEBUG
-#define DEBUG(s, f, ...) log_printf("%s %s: " s "\n", "LPS22HH", f, \
-                                                                 ## __VA_ARGS__)
-#else
-#define DEBUG(s, f, ...)
-#endif // LPS22HH_DEBUG
-
-#define ERROR(s, f, ...) log_printf("%s %s: " s "\n", "LPS22HH", f, \
-                                                                ## __VA_ARGS__)
-
 /*******************************************************************************
 *   Included Headers
 *******************************************************************************/
 
-#include "lsm6dso_reg.h"
 #include "lps22hh_reg.h"
 
 /*******************************************************************************

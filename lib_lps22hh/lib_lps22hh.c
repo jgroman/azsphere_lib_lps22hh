@@ -45,6 +45,10 @@
  *
  */
 
+/*******************************************************************************
+* Included header files
+*******************************************************************************/
+
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -59,21 +63,41 @@
 
 #include "lib_lps22hh.h"
 
- /*******************************************************************************
- * Forward declarations of private functions
- *******************************************************************************/
+/*******************************************************************************
+* Macros and #define constants
+*******************************************************************************/
 
- /**
-  * @brief Platform dependent I2C Read function.
-  *
-  * @param fd_i2c I2C interface file descriptor.
-  * @param i2c_addr I2C device address.
-  * @param reg_addr Register address to be read from.
-  * @param p_data Pointer to buffer for read data.
-  * @param data_len Number of bytes to be read.
-  *
-  * @result 0 for success or -1 for failure.
-  */
+// Uncomment line below to enable debugging messages
+//#define LPS22HH_DEBUG
+
+// Uncomment line below to enable I2C debugging messages
+//#define LPS22HH_I2C_DEBUG
+
+#ifdef LPS22HH_DEBUG
+#define LPS_DEBUG(s, f, ...) log_printf("%s %s: " s "\n", "LPS22HH", f, \
+                                                                 ## __VA_ARGS__)
+#else
+#define LPS_DEBUG(s, f, ...)
+#endif // LPS22HH_DEBUG
+
+#define LPS_ERROR(s, f, ...) log_printf("%s %s: " s "\n", "LPS22HH", f, \
+                                                                ## __VA_ARGS__)
+
+/*******************************************************************************
+* Forward declarations of private functions
+*******************************************************************************/
+
+/**
+ * @brief Platform dependent I2C Read function.
+ *
+ * @param fd_i2c I2C interface file descriptor.
+ * @param i2c_addr I2C device address.
+ * @param reg_addr Register address to be read from.
+ * @param p_data Pointer to buffer for read data.
+ * @param data_len Number of bytes to be read.
+ *
+ * @result 0 for success or -1 for failure.
+ */
 static ssize_t
 i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
     uint8_t *p_data, uint32_t data_len);
@@ -147,7 +171,7 @@ stmdev_ctx_t
     if ((p_lps = malloc(sizeof(stmdev_ctx_t))) == NULL)
     {
         // Cannot allocate memory for device descriptor
-        ERROR("Not enough free memory.", __FUNCTION__);
+        LPS_ERROR("Not enough free memory.", __FUNCTION__);
         b_is_init_ok = false;
     }
     else
@@ -169,7 +193,7 @@ stmdev_ctx_t
     if (b_is_init_ok && 
         (lsm6dso_mem_bank_set(&g_lsm6dso_ctx, LSM6DSO_USER_BANK) != 0))
     {
-        ERROR("LSM6DSO failed to set memory bank.", __FUNCTION__);
+        LPS_ERROR("LSM6DSO failed to set memory bank.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -177,14 +201,14 @@ stmdev_ctx_t
     if (b_is_init_ok &&
         (lsm6dso_device_id_get(&g_lsm6dso_ctx, &device_id) != 0))
     {
-        ERROR("LSM6DSO failed to read WHO_AM_I.", __FUNCTION__);
+        LPS_ERROR("LSM6DSO failed to read WHO_AM_I.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
     // -- Check WHO_AM_I value
     if (b_is_init_ok && (device_id != LSM6DSO_ID))
     {
-        ERROR("LSM6DSO device not present.", __FUNCTION__);
+        LPS_ERROR("LSM6DSO device not present.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -192,7 +216,7 @@ stmdev_ctx_t
     if (b_is_init_ok &&
         (lsm6dso_reset_set(&g_lsm6dso_ctx, PROPERTY_ENABLE) != 0))
     {
-        ERROR("LSM6DSO failed to set reset.", __FUNCTION__);
+        LPS_ERROR("LSM6DSO failed to set reset.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -207,7 +231,7 @@ stmdev_ctx_t
 
         if (result != 0)
         {
-            ERROR("LSM6DSO failed to get reset flag.", __FUNCTION__);
+            LPS_ERROR("LSM6DSO failed to get reset flag.", __FUNCTION__);
             b_is_init_ok = false;
         }
     }
@@ -216,7 +240,7 @@ stmdev_ctx_t
     if (b_is_init_ok &&
         (lsm6dso_i3c_disable_set(&g_lsm6dso_ctx, LSM6DSO_I3C_DISABLE) != 0))
     {
-        ERROR("LSM6DSO failed to disable I3C.", __FUNCTION__);
+        LPS_ERROR("LSM6DSO failed to disable I3C.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -224,13 +248,13 @@ stmdev_ctx_t
     if (b_is_init_ok &&
         (lsm6dso_block_data_update_set(&g_lsm6dso_ctx, PROPERTY_ENABLE) != 0))
     {
-        ERROR("LSM6DSO failed to enable block data update.", __FUNCTION__);
+        LPS_ERROR("LSM6DSO failed to enable block data update.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
     if (b_is_init_ok)
     {
-        DEBUG("LSM6DSO device detected and initialized.", __FUNCTION__);
+        LPS_DEBUG("LSM6DSO device detected and initialized.", __FUNCTION__);
     }
 
     // Initializing LPS22HH
@@ -238,7 +262,7 @@ stmdev_ctx_t
     if (b_is_init_ok &&
        (lsm6dso_sh_pin_mode_set(&g_lsm6dso_ctx, LSM6DSO_INTERNAL_PULL_UP) != 0))
     {
-        ERROR("LSM6DSO failed to enable internal pullup.", __FUNCTION__);
+        LPS_ERROR("LSM6DSO failed to enable internal pullup.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -246,14 +270,14 @@ stmdev_ctx_t
     if (b_is_init_ok && 
         (lps22hh_device_id_get(p_lps, &device_id) != 0))
     {
-        ERROR("LPS22HH failed to read WHO_AM_I.", __FUNCTION__);
+        LPS_ERROR("LPS22HH failed to read WHO_AM_I.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
     // -- Check WHO_AM_I value
     if (b_is_init_ok && (device_id != LPS22HH_ID))
     {
-        ERROR("LPS22HH device not present.", __FUNCTION__);
+        LPS_ERROR("LPS22HH device not present.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -261,7 +285,7 @@ stmdev_ctx_t
     if (b_is_init_ok &&
         (lps22hh_reset_set(p_lps, PROPERTY_ENABLE) != 0))
     {
-        ERROR("LPS22HH failed to set reset.", __FUNCTION__);
+        LPS_ERROR("LPS22HH failed to set reset.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -276,7 +300,7 @@ stmdev_ctx_t
 
         if (result != 0)
         {
-            ERROR("LPS22HH failed to get reset flag.", __FUNCTION__);
+            LPS_ERROR("LPS22HH failed to get reset flag.", __FUNCTION__);
             b_is_init_ok = false;
         }
     }
@@ -285,7 +309,7 @@ stmdev_ctx_t
     if (b_is_init_ok &&
         (lps22hh_block_data_update_set(p_lps, PROPERTY_ENABLE) != 0))
     {
-        ERROR("LPS22HH failed to enable block data update.", __FUNCTION__);
+        LPS_ERROR("LPS22HH failed to enable block data update.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
@@ -293,13 +317,13 @@ stmdev_ctx_t
     if (b_is_init_ok &&
         (lps22hh_data_rate_set(p_lps, LPS22HH_10_Hz_LOW_NOISE) != 0))
     {
-        ERROR("LPS22HH failed to set output data rate.", __FUNCTION__);
+        LPS_ERROR("LPS22HH failed to set output data rate.", __FUNCTION__);
         b_is_init_ok = false;
     }
 
     if (b_is_init_ok)
     {
-        DEBUG("LPS22HH device detected and initialized.", __FUNCTION__);
+        LPS_DEBUG("LPS22HH device detected and initialized.", __FUNCTION__);
     }
     else
     {
@@ -484,7 +508,7 @@ i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
     if (p_data)
     {
 #   	ifdef LPS22HH_I2C_DEBUG
-        DEBUG("(0x%02X): REG READ [%02X] bytes %d", __FUNCTION__, i2c_addr, 
+        LPS_DEBUG("(0x%02X): REG READ [%02X] bytes %d", __FUNCTION__, i2c_addr, 
             reg_addr, data_len);
 #       endif   // LPS22HH_I2C_DEBUG
 
@@ -494,8 +518,8 @@ i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
         if (result == -1)
         {
 #   	    ifdef LPS22HH_DEBUG
-            DEBUG("Error %s (%d) on I2C WR operation at addr 0x%02X",
-                __FUNCTION__, strerror(errno), errno, i2c_addr);
+            LPS_DEBUG("Error %s (%d) on I2C WR operation at addr 0x%02X",
+                __FUNCTION__, strLPS_ERROR(errno), errno, i2c_addr);
 #           endif   // LPS22HH_DEBUG
         }
         else
@@ -529,7 +553,7 @@ i2c_write(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
     if (p_data)
     {
 #   	ifdef LPS22HH_I2C_DEBUG
-        DEBUG("(0x%02X): REG WRITE [%02X] bytes %d", __FUNCTION__, i2c_addr, 
+        LPS_DEBUG("(0x%02X): REG WRITE [%02X] bytes %d", __FUNCTION__, i2c_addr, 
             reg_addr, data_len);
 #       endif   // LPS22HH_I2C_DEBUG
 
@@ -556,8 +580,8 @@ i2c_write(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
         if (result == -1)
         {
 #		    ifdef LPS22HH_DEBUG
-            DEBUG("Error %s (%d) writing %d byte(s) to I2C addr 0x%02X",
-                __FUNCTION__, strerror(errno), errno, data_len + 1, i2c_addr);
+            LPS_DEBUG("Error %s (%d) writing %d byte(s) to I2C addr 0x%02X",
+              __FUNCTION__, strLPS_ERROR(errno), errno, data_len + 1, i2c_addr);
 #           endif   // LPS22HH_DEBUG
         }
     }
