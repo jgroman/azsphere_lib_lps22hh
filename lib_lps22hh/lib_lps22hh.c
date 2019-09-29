@@ -68,7 +68,7 @@
 *******************************************************************************/
 
 // Uncomment line below to enable debugging messages
-//#define LPS22HH_DEBUG
+#define LPS22HH_DEBUG
 
 // Uncomment line below to enable I2C debugging messages
 //#define LPS22HH_I2C_DEBUG
@@ -519,7 +519,7 @@ i2c_read(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
         {
 #   	    ifdef LPS22HH_DEBUG
             LPS_DEBUG("Error %s (%d) on I2C WR operation at addr 0x%02X",
-                __FUNCTION__, strLPS_ERROR(errno), errno, i2c_addr);
+                __FUNCTION__, strerror(errno), errno, i2c_addr);
 #           endif   // LPS22HH_DEBUG
         }
         else
@@ -581,7 +581,7 @@ i2c_write(int fd_i2c, I2C_DeviceAddress i2c_addr, uint8_t reg_addr,
         {
 #		    ifdef LPS22HH_DEBUG
             LPS_DEBUG("Error %s (%d) writing %d byte(s) to I2C addr 0x%02X",
-              __FUNCTION__, strLPS_ERROR(errno), errno, data_len + 1, i2c_addr);
+                __FUNCTION__, strerror(errno), errno, data_len + 1, i2c_addr);
 #           endif   // LPS22HH_DEBUG
         }
     }
