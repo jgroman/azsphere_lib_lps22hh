@@ -150,8 +150,8 @@ lps22hh_write_via_lsm6dso(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
 * Global variables
 *******************************************************************************/
 
-int g_fd_i2c = -1;
-stmdev_ctx_t g_lsm6dso_ctx;
+static int g_fd_i2c = -1;
+static stmdev_ctx_t g_lsm6dso_ctx;
 
 /*******************************************************************************
 * Public function definitions
