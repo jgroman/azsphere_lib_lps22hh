@@ -154,6 +154,7 @@ main(int argc, char *argv[])
             // Check that new pressure and temperature data are ready
             if ((lps22hh_reg.status.p_da == 1) && (lps22hh_reg.status.t_da == 1))
             {
+                data_raw_pressure[3] = 0;
                 lps22hh_pressure_raw_get(gp_lps22hh_ctx, data_raw_pressure);
                 lps_pressure_hpa = lps22hh_from_lsb_to_hpa(*(int32_t *)data_raw_pressure);
                 Log_Debug("LPS22HH: Pressure     [hPa] : %.2f\n", lps_pressure_hpa);
