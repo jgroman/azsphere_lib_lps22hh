@@ -2,10 +2,13 @@
 * @file    lib_lps22hh.h
 * @version 1.0.0
 * @authors STMicroelectronics
+*          https://github.com/STMicroelectronics/STMems_Standard_C_drivers/
+*
+* @authors AVNet developers
 * @authors Jaroslav Groman
 *
 * @par Project Name
-*
+*      LPS22HH sensor support library for Azure Sphere
 *
 * @par Description
 *    .
